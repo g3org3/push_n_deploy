@@ -26,12 +26,17 @@ require_repo() {
   [[ $(runuser -u "$GIT_USER" -- git --git-dir="$REPO" rev-parse --is-bare-repository) == true ]] || die 'Expected a bare repository.'
 }
 install_deployment_hooks() {
-  local script_dir=$1 config_dir=$2 hook_tmp
-  install -o root -g "$GIT_GID" -m 640 "$script_dir/lib/remote-deploy.sh" "$config_dir/remote-deploy.sh"
+  local script_dir=$1 config_dir=$2 hook_tmp builds_dir
+  builds_dir="$GIT_HOME/.push_n_deploy/$REPO_REL"
+  install -d -o root -g "$GIT_GID" -m 750 "$GIT_HOME/.push_n_deploy" "$GIT_HOME/.push_n_deploy/${REPO_REL%/*}"
+  install -d -o "$GIT_USER" -g "$GIT_GID" -m 700 "$builds_dir"
+  cat "$script_dir/lib/mise.sh" "$script_dir/lib/releases.sh" "$script_dir/lib/remote-deploy.sh" > "$config_dir/remote-deploy.sh"
+  chown root:"$GIT_GID" "$config_dir/remote-deploy.sh"
+  chmod 640 "$config_dir/remote-deploy.sh"
   install -o root -g "$GIT_GID" -m 640 "$script_dir/lib/prepare-artifact.sh" "$config_dir/prepare-artifact.sh"
   hook_tmp=$(mktemp "$REPO/hooks/.post-receive.XXXXXXXX")
   {
-    printf '#!/usr/bin/env bash\nconfig_dir=%q\n' "$config_dir"
+    printf '#!/usr/bin/env bash\nconfig_dir=%q\nbuilds_dir=%q\n' "$config_dir" "$builds_dir"
     cat "$script_dir/lib/post-receive.sh"
   } > "$hook_tmp"
   chown root:"$GIT_GID" "$hook_tmp"

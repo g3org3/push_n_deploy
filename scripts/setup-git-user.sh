@@ -16,12 +16,17 @@ else
 fi
 git_account
 passwd --lock "$GIT_USER" >/dev/null
-# Root owns authentication and configuration; Git can write only repository data.
+# Root owns the home and authentication; Git owns repository data and tool caches.
 chown root:"$GIT_GID" "$GIT_HOME"
 chmod 755 "$GIT_HOME"
 install -d -o root -g "$GIT_GID" -m 750 "$GIT_HOME/.ssh" "$GIT_HOME/.push-n-deploy"
 # Build tools such as mise need writable per-user config, data and caches.
 install -d -o "$GIT_USER" -g "$GIT_GID" -m 700 "$GIT_HOME/.config" "$GIT_HOME/.local" "$GIT_HOME/.cache"
+# npm defaults to ~/.npm rather than ~/.cache. Repair earlier root-owned caches.
+npm_cache="$GIT_HOME/.npm"
+[[ ! -L $npm_cache ]] || die 'Expected .npm to be a directory, not a symlink.'
+install -d -o "$GIT_USER" -g "$GIT_GID" -m 700 "$npm_cache"
+chown -h -R -P "$GIT_USER:$GIT_GID" "$npm_cache"
 if [[ ! -e $GIT_HOME/.ssh/authorized_keys ]]; then
   install -o root -g "$GIT_GID" -m 640 /dev/null "$GIT_HOME/.ssh/authorized_keys"
 fi

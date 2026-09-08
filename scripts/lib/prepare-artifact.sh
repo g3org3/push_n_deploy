@@ -76,4 +76,9 @@ make build
 [[ -d $output_dir ]] || die "Build did not produce output directory: $output_dir"
 [[ $(realpath -e -- "$output_dir") == "$PWD/$output_dir" ]] || die 'output_dir must not resolve through symlinks.'
 [[ -f $makefile && ! -L $makefile ]] || die 'Build removed or replaced the Makefile with a symlink.'
-tar -czf "$work_dir/artifact.tar.gz" -- "$makefile" "$output_dir"
+artifact_files=("$makefile" "$output_dir")
+if [[ -e mise.toml || -L mise.toml ]]; then
+  [[ -f mise.toml && ! -L mise.toml ]] || die 'mise.toml must be a regular file.'
+  artifact_files+=(mise.toml)
+fi
+tar -czf "$work_dir/artifact.tar.gz" -- "${artifact_files[@]}"

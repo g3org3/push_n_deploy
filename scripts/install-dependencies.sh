@@ -8,6 +8,7 @@ role=${1:-git-server}
 command -v apt-get >/dev/null || die 'This installer supports Debian/Ubuntu. See README for packages on other systems.'
 packages=(bash openssh-server tar gzip make mawk util-linux coreutils curl ca-certificates)
 [[ $role != git-server ]] || packages+=(git openssh-client passwd)
+[[ $role != target ]] || packages+=(systemd libpam-systemd dbus-user-session)
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"
 # Install system-wide so the deploy account can use mise over SSH.

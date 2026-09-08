@@ -30,3 +30,13 @@ chown root:"$GIT_GID" "$config_dir/config"
 chmod 640 "$config_dir/config"
 install_deployment_hooks "$script_dir" "$config_dir"
 printf 'Pushes to %s will deploy to %s:%s.\n' "$branch" "$target" "$destination"
+if [[ -t 0 ]]; then
+  read -r -p 'Set up a systemd user service on the target? [y/N]: ' setup_service || setup_service=no
+  case ${setup_service,,} in
+    y|yes) bash "$script_dir/setup-user-service.sh" "$1" "$2" ;;
+    ''|n|no) ;;
+    *) die 'Answer yes or no. Deployment is configured; run setup-user-service.sh to add a service.' ;;
+  esac
+else
+  printf 'To add a systemd user service, run: sudo bash scripts/setup-user-service.sh %s %s\n' "$1" "$2"
+fi
