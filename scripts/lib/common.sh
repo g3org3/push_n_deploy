@@ -33,7 +33,9 @@ install_deployment_hooks() {
   cat "$script_dir/lib/mise.sh" "$script_dir/lib/releases.sh" "$script_dir/lib/remote-deploy.sh" > "$config_dir/remote-deploy.sh"
   chown root:"$GIT_GID" "$config_dir/remote-deploy.sh"
   chmod 640 "$config_dir/remote-deploy.sh"
-  install -o root -g "$GIT_GID" -m 640 "$script_dir/lib/prepare-artifact.sh" "$config_dir/prepare-artifact.sh"
+  cat "$script_dir/lib/mise.sh" "$script_dir/lib/prepare-artifact.sh" > "$config_dir/prepare-artifact.sh"
+  chown root:"$GIT_GID" "$config_dir/prepare-artifact.sh"
+  chmod 640 "$config_dir/prepare-artifact.sh"
   hook_tmp=$(mktemp "$REPO/hooks/.post-receive.XXXXXXXX")
   {
     printf '#!/usr/bin/env bash\nconfig_dir=%q\nbuilds_dir=%q\n' "$config_dir" "$builds_dir"

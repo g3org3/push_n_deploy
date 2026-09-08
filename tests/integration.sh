@@ -43,7 +43,11 @@ mkdir -p "$builds_dir"
 destination="$tmp/target with spaces and ' quote"
 printf 'target=%q\ndestination=%q\nbranch=main\nport=2222\n' 'deploy@example.invalid' "$destination" > "$config_dir/config"
 cat "$project/scripts/lib/mise.sh" "$project/scripts/lib/releases.sh" "$project/scripts/lib/remote-deploy.sh" > "$config_dir/remote-deploy.sh"
-cp "$project/scripts/lib/prepare-artifact.sh" "$config_dir/prepare-artifact.sh"
+{
+  # Model the Git server's tools independently of executables on the test host.
+  printf 'export PATH="$TEST_TOOLS_BIN:$PATH"\n'
+  cat "$project/scripts/lib/mise.sh" "$project/scripts/lib/prepare-artifact.sh"
+} > "$config_dir/prepare-artifact.sh"
 touch "$config_dir/lock"
 {
   printf '#!/usr/bin/env bash\nconfig_dir=%q\nbuilds_dir=%q\n' "$config_dir" "$builds_dir"
@@ -128,9 +132,9 @@ set -euo pipefail
 printf '%s\n' "$*" >> "$MISE_CALL_LOG"
 case $1 in
   --version) printf 'mise test\n' ;;
-  trust) [[ -f $2 ]] ;;
+  trust) [[ -f $2 && ${MISE_TRUST_FAIL:-0} == 0 ]] ;;
   install) [[ ${MISE_INSTALL_FAIL:-0} == 0 ]] ;;
-  exec) shift 2; exec "$@" ;;
+  exec) shift 2; export MISE_TOOLS_READY=yes; exec "$@" ;;
   *) exit 1 ;;
 esac
 SH
@@ -151,6 +155,7 @@ cat > "$tmp/work/build.mk" <<'MAKE'
 TARGET := build
 .PHONY: $(TARGET)
 $(TARGET):
+	@test "$$MISE_TOOLS_READY" = yes
 	@mkdir -p 'build output'
 	@printf '%s\n' "$$PUSH_DEPLOY_REVISION" > 'build output/revision'
 MAKE
@@ -159,21 +164,27 @@ git -C "$tmp/work" commit -qm custom-build
 git -C "$tmp/work" push deploy main > "$tmp/push.log" 2>&1
 [[ $(cat "$destination/current/deployed") == "$(git -C "$tmp/work" rev-parse HEAD)" ]] || fail 'Custom artifact was not deployed.'
 cmp "$tmp/work/mise.toml" "$destination/current/mise.toml" || fail 'Artifact lost mise.toml.'
-expected_mise_calls=$'--version\ntrust ./mise.toml\ninstall\nexec -- make deploy'
-[[ $(cat "$MISE_CALL_LOG") == "$expected_mise_calls" ]] || fail 'Target runtime preparation order is incorrect.'
+expected_mise_calls=$'--version\ntrust ./mise.toml\ninstall\nexec -- make build\n--version\ntrust ./mise.toml\ninstall\nexec -- make deploy'
+[[ $(cat "$MISE_CALL_LOG") == "$expected_mise_calls" ]] || fail 'Build/target runtime preparation order is incorrect.'
 last_success=$(readlink "$destination/current")
 artifacts_before_failure=$(printf '%s\n' "$builds_dir"/*.tar.gz)
 
 assert_local_failure() {
   rm -f "$SSH_ARGS_LOG"
   git -C "$tmp/work" add -A
-  git -C "$tmp/work" commit -qm "$1"
+  git -C "$tmp/work" commit --allow-empty -qm "$1"
   git -C "$tmp/work" push deploy main > "$tmp/push.log" 2>&1
   grep -q 'DEPLOYMENT FAILED' "$tmp/push.log" || fail "$1 was not reported."
   [[ ! -e $SSH_ARGS_LOG ]] || fail "$1 reached SSH instead of stopping locally."
   [[ $(readlink "$destination/current") == "$last_success" ]] || fail "$1 changed current."
   [[ $(printf '%s\n' "$builds_dir"/*.tar.gz) == "$artifacts_before_failure" ]] || fail "$1 changed retained artifacts."
 }
+export MISE_TRUST_FAIL=1
+assert_local_failure build-mise-trust-failure
+unset MISE_TRUST_FAIL
+export MISE_INSTALL_FAIL=1
+assert_local_failure build-mise-install-failure
+unset MISE_INSTALL_FAIL
 printf 'build:\n\t@exit 1\n' > "$tmp/work/build.mk"
 assert_local_failure build-failure
 printf 'build:\n\t@true\n' > "$tmp/work/build.mk"

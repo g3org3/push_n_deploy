@@ -72,7 +72,15 @@ fi
 
 read_output_dir
 printf 'Building %s on the Git server (output: %s).\n' "$PUSH_DEPLOY_REVISION" "$output_dir"
-make build
+if [[ -e mise.toml || -L mise.toml ]]; then
+  [[ -f mise.toml && ! -L mise.toml ]] || die 'mise.toml must be a regular file.'
+  ensure_mise
+  mise trust ./mise.toml
+  mise install
+  mise exec -- make build
+else
+  make build
+fi
 [[ -d $output_dir ]] || die "Build did not produce output directory: $output_dir"
 [[ $(realpath -e -- "$output_dir") == "$PWD/$output_dir" ]] || die 'output_dir must not resolve through symlinks.'
 [[ -f $makefile && ! -L $makefile ]] || die 'Build removed or replaced the Makefile with a symlink.'

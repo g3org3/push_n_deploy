@@ -264,14 +264,10 @@ are rejected. Config is read only when a build target exists.
 For example, if `npm run build` produces `build/`:
 
 ```makefile
-MISE := mise
-
 .PHONY: build deploy
 build:
-	$(MISE) trust ./mise.toml
-	$(MISE) install
-	$(MISE) exec -- npm ci
-	$(MISE) exec -- npm run build
+	npm ci
+	npm run build
 
 deploy:
 	mkdir -p "$(HOME)/www/myapp"
@@ -281,9 +277,13 @@ deploy:
 This example copies static assets into the deployment user's web directory;
 adapt `deploy` to your service. `build` runs as the Git account on the Git server,
 and `deploy` runs as the target SSH account. Both receive `PUSH_DEPLOY_REVISION`.
-Use `mise exec` for tools needed during build; the hook adds `/usr/local/bin`
-and the Git user's `~/.local/bin` to PATH. Interactive shell activation is not
-required. Commit `mise.toml`, your package
+When a build target and `mise.toml` are present, the Git server ensures mise is
+available, runs `mise trust ./mise.toml` and `mise install`, then executes
+`mise exec -- make build`. Recipes can use plain `npm`, `node`, `python`, etc.
+Trust or installation failures stop deployment before any artifact is sent.
+Without `mise.toml`, the hook runs plain `make build`. Source-only projects skip
+build-side mise setup. Interactive shell activation is not required.
+Commit `mise.toml`, your package
 lockfile, and other build inputs. Build dependencies must support the Git server's
 OS/architecture, and generated artifacts must be compatible with the target.
 
