@@ -23,16 +23,10 @@ install -d -o root -g "$GIT_GID" -m 750 "$GIT_HOME/.push-n-deploy/$1" "$config_d
 install -o root -g "$GIT_GID" -m 640 "$identity" "$config_dir/identity"
 install -o root -g "$GIT_GID" -m 640 "$known_hosts" "$config_dir/known_hosts"
 install -o "$GIT_USER" -g "$GIT_GID" -m 600 /dev/null "$config_dir/lock"
-install -o root -g "$GIT_GID" -m 640 "$script_dir/lib/remote-deploy.sh" "$config_dir/remote-deploy.sh"
 {
   printf 'target=%q\ndestination=%q\nbranch=%q\nport=%q\n' "$target" "$destination" "$branch" "$port"
 } > "$config_dir/config"
 chown root:"$GIT_GID" "$config_dir/config"
 chmod 640 "$config_dir/config"
-{
-  printf '#!/usr/bin/env bash\nconfig_dir=%q\n' "$config_dir"
-  cat "$script_dir/lib/post-receive.sh"
-} > "$hook"
-chown root:"$GIT_GID" "$hook"
-chmod 750 "$hook"
+install_deployment_hooks "$script_dir" "$config_dir"
 printf 'Pushes to %s will deploy to %s:%s.\n' "$branch" "$target" "$destination"

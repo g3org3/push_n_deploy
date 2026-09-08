@@ -20,6 +20,8 @@ passwd --lock "$GIT_USER" >/dev/null
 chown root:"$GIT_GID" "$GIT_HOME"
 chmod 755 "$GIT_HOME"
 install -d -o root -g "$GIT_GID" -m 750 "$GIT_HOME/.ssh" "$GIT_HOME/.push-n-deploy"
+# Build tools such as mise need writable per-user config, data and caches.
+install -d -o "$GIT_USER" -g "$GIT_GID" -m 700 "$GIT_HOME/.config" "$GIT_HOME/.local" "$GIT_HOME/.cache"
 if [[ ! -e $GIT_HOME/.ssh/authorized_keys ]]; then
   install -o root -g "$GIT_GID" -m 640 /dev/null "$GIT_HOME/.ssh/authorized_keys"
 fi

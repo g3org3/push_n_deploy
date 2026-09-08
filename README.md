@@ -3,14 +3,17 @@
 Bash scripts for a small, trusted-team Git deployment server:
 
 ```text
-developer / CI --git push--> Git server --SSH + source archive--> target
-                             git-shell                         make deploy
+developer / CI --git push--> Git server --SSH + tar.gz--> target
+                             optional make build         make deploy
 ```
 
 Each project has a bare repository, one deployment branch (default `main`),
-and one target. The target receives the exact pushed Git archive in a fresh
-release directory, runs `make deploy` there, and updates a `current` symlink
-only when the command succeeds. The target does not need to clone the repo.
+and one target. The Git server extracts the pushed revision into a temporary
+directory. If the Makefile defines `build`, it runs `make build` and packages
+the output directory plus the Makefile. Otherwise it packages the full Git
+source archive. The target extracts the `.tar.gz` into a fresh release directory,
+runs `make deploy` there, and updates a `current` symlink only when the command
+succeeds. The target does not need to clone the repo.
 
 ## 1. Prepare the Git server
 
@@ -110,6 +113,20 @@ address. The script copies credentials and hook configuration into
 to overwrite an existing deployment or hook. To change settings, edit its
 root-owned `config` file as Bash assignments; keep ownership and permissions.
 
+To upgrade an existing deployment to the current hook implementation, pause
+pushes while updating, copy the current version of these scripts to the Git
+server, and run:
+
+```bash
+sudo bash scripts/install-dependencies.sh git-server
+sudo bash scripts/setup-git-user.sh
+sudo bash scripts/update-deployment.sh george myapp
+```
+
+The update preserves the deployment configuration and SSH keys. Rerunning user
+setup adds writable `.local`, `.cache`, and `.config` directories for build tools.
+Update target dependencies with `install-dependencies.sh target` on that machine.
+
 Your project needs a Makefile with a `deploy` target. For example:
 
 ```makefile
@@ -125,6 +142,61 @@ from its working directory; if your service serves `current` directly, the
 symlink switches after Make succeeds. Service restart/activation requirements
 belong in your application's deployment design.
 
+### Optional build on the Git server
+
+Define a `build` target to enable artifact deployment. The hook uses GNU Make's
+parsed target database, so targets defined with variables or included Makefiles
+are recognized. Target detection does not run recipes, although Make's parse-time
+expressions such as `$(shell ...)` still execute. Invalid Makefiles stop deployment.
+A build failure or missing output directory also stops deployment; neither falls
+back to sending source.
+
+The output directory defaults to `./dist`. Override it in a tracked
+`.push_n_deploy.yml`:
+
+```yaml
+output_dir: ./build
+```
+
+The Bash parser supports only this top-level string setting, optionally quoted,
+plus blank lines and comments. If the file or setting is absent, `./dist` is used.
+An empty or malformed setting is an error. Paths must name a directory inside
+the checkout; absolute paths, `..`, the checkout root, and paths through symlinks
+are rejected. Config is read only when a build target exists.
+
+For example, if `npm run build` produces `build/`:
+
+```makefile
+MISE := /usr/local/bin/mise
+
+.PHONY: build deploy
+build:
+	$(MISE) trust ./mise.toml
+	$(MISE) install
+	$(MISE) exec -- npm ci
+	$(MISE) exec -- npm run build
+
+deploy:
+	mkdir -p "$(HOME)/www/myapp"
+	cp -a build/. "$(HOME)/www/myapp/"
+```
+
+This example copies static assets into the deployment user's web directory;
+adapt `deploy` to your service. `build` runs as the Git account on the Git server,
+and `deploy` runs as the target SSH account. Both receive `PUSH_DEPLOY_REVISION`.
+Use mise's absolute binary path and `mise exec` for tools needed during build;
+interactive shell activation is not required. Commit `mise.toml`, your package
+lockfile, and other build inputs. Build dependencies must support the Git server's
+OS/architecture, and generated artifacts must be compatible with the target.
+
+The artifact preserves the output directory name (`build/`, not just its contents)
+and includes hidden output files. Only that directory and the selected Makefile
+(`GNUmakefile`, `makefile`, or `Makefile`, in Make's precedence order) are sent.
+Any deploy-time scripts, config, or included makefiles must therefore live in the
+output directory, or the deploy recipe must be self-contained. In particular,
+`deploy` should not depend on `build`: the target no longer has the source inputs.
+Source checkouts and local archives are removed after success or failure.
+
 ## 4. Push
 
 From your development machine or CI:
@@ -135,7 +207,7 @@ git push deploy main
 ```
 
 Use an SSH config entry on the pushing machine if you need a particular key
-or a nonstandard Git-server port. Output from `make deploy` appears in the push
+or a nonstandard Git-server port. Output from `make build` and `make deploy` appears in the push
 output. Pushes to other branches, tags, and branch deletions do not deploy.
 New repositories reject non-fast-forward updates.
 
@@ -161,13 +233,14 @@ New repositories reject non-fast-forward updates.
 - Successful and failed releases remain under `releases/` for inspection.
   There is no automatic cleanup or rollback of external effects from Make.
   Remove old releases according to your retention policy, preserving `current`.
-- Release directories contain Git archive contents, including tracked dotfiles.
-  They have no `.git` directory, untracked files, expanded Git LFS objects, or
-  submodule contents. Git's `export-ignore` and `export-subst` attributes apply.
-  Keep persistent data and secrets outside release directories.
-- Anyone who can push the deployment branch can run code as the target's
-  deploy user via the Makefile. Use this for trusted collaborators, restrict
-  the deploy user's privileges, and avoid sharing one target directory between
+- Without a build, release directories contain Git archive contents, including
+  tracked dotfiles. With a build, they contain the generated output and Makefile.
+  Build inputs come from Git archives: no `.git` directory, untracked files,
+  expanded Git LFS objects, or submodule contents. Git's `export-ignore` and
+  `export-subst` attributes apply. Keep persistent data and secrets outside releases.
+- Anyone who can push the deployment branch can run code as the Git account
+  on the Git server and as the target's deploy user via the Makefile. Use this
+  for trusted collaborators, restrict both accounts' privileges, and avoid sharing one target directory between
   unrelated repositories. This provides no per-repository key isolation.
 - The deployment hook is synchronous; long deployments keep the push connection
   open. This is intentionally a small setup, without a queue, dashboard, or
@@ -183,7 +256,9 @@ bash tests/integration.sh
 The integration test uses real Git pushes to an `OWNER/REPO` relative remote
 through `git-shell`, replacing SSH with local execution. It checks the pushed revision, branch/tag filtering,
 quoted paths, stale/deleted refs, Make/SSH failures, and preservation of the
-last successful `current`. Account creation, package installation, and real
+last successful `current`. It also checks gzip artifacts, default/custom build
+output, included build targets, source fallback, and invalid/missing output.
+Account creation, package installation, and real
 SSH authentication still need a smoke test on your servers.
 
 Design references: [Git hooks](https://git-scm.com/docs/githooks),

@@ -12,7 +12,7 @@ if [[ -e current && ! -L current ]]; then
   exit 1
 fi
 release=$(mktemp -d "$PWD/releases/$revision.XXXXXXXX")
-tar --extract --file=- --directory="$release" --no-same-owner --no-same-permissions
+tar --extract --gzip --file=- --directory="$release" --no-same-owner --no-same-permissions
 cd -- "$release"
 export PUSH_DEPLOY_REVISION="$revision"
 make deploy

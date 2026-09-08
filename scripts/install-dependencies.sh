@@ -6,7 +6,7 @@ root_required
 role=${1:-git-server}
 [[ $role == git-server || $role == target ]] || die 'Role must be git-server or target.'
 command -v apt-get >/dev/null || die 'This installer supports Debian/Ubuntu. See README for packages on other systems.'
-packages=(bash openssh-server tar make util-linux coreutils curl ca-certificates)
+packages=(bash openssh-server tar gzip make mawk util-linux coreutils curl ca-certificates)
 [[ $role != git-server ]] || packages+=(git openssh-client passwd)
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"
