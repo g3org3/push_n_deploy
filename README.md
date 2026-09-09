@@ -321,6 +321,24 @@ or a nonstandard Git-server port. Output from `make build` and `make deploy` app
 output. Pushes to other branches, tags, and branch deletions do not deploy.
 New repositories reject non-fast-forward updates.
 
+## GitHub webhook deployment (alternative)
+
+Instead of pushing to this Git server, a Bun HTTP server can receive GitHub
+`push` webhooks directly: it clones the repo, runs `make build` (mise-aware,
+reading `output_dir` from `.push_n_deploy.yml`), and deploys the build output
+to the target over SSH with the same release/`current` mechanics. State lives
+in `/srv/git/.github_webhook` with one shared SSH deploy key for all repos.
+
+See `github_webhook/README.md`. Summary:
+
+```bash
+sudo bash github_webhook/install-server.sh   # on the Git server; serves :9090
+sudo bash github_webhook/register-repo.sh george myapp \
+  --url https://github.com/george/myapp.git \
+  --target deploy@target.example.com --dir /srv/apps/myapp
+# then run the printed `gh api .../hooks` command to register the webhook
+```
+
 ## Roll back a deployment
 
 On the Git server:
